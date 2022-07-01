@@ -3,10 +3,18 @@ import Link from "next/link";
 
 import prisma from "lib/prisma";
 import { getProduct } from "lib/data";
-
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/router";
 import Heading from "components/Heading";
 
 export default function Product({ product }) {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const loading = status === "loading";
+
+  if (loading) {
+    return null;
+  }
   if (!product) {
     return null;
   }
@@ -17,6 +25,7 @@ export default function Product({ product }) {
         <title>Digital Downloads</title>
         <meta name="description" content="Digital Downloads Website" />
         <link rel="icon" href="/favicon.ico" />
+        <script src="https://js.stripe.com/v3/" async></script>
       </Head>
 
       <Heading />
@@ -38,9 +47,63 @@ export default function Product({ product }) {
               )}
             </div>
             <div className="">
-              <button className="text-sm border p-2 font-bold uppercase">
-                PURCHASE
-              </button>
+              {!session && <p>Login first</p>}
+              {session && (
+                <>
+                  {session.user.id !== product.author.id ? (
+                    <button
+                      className="text-sm border p-2 font-bold uppercase"
+                      onClick={async () => {
+                        if (product.free) {
+                          await fetch("/api/download", {
+                            body: JSON.stringify({
+                              product_id: product.id,
+                            }),
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            method: "POST",
+                          });
+
+                          router.push("/dashboard");
+                        } else {
+                          const res = await fetch("/api/stripe/session", {
+                            body: JSON.stringify({
+                              amount: product.price,
+                              title: product.title,
+                              product_id: product.id,
+                            }),
+                            headers: {
+                              "Content-Type": "application/json",
+                            },
+                            method: "POST",
+                          });
+
+                          const data = await res.json();
+                          if (data.status === "error") {
+                            alert(data.message);
+                            return;
+                          }
+                          console.log("data", data);
+
+                          const sessionId = data.sessionId;
+                          const stripePublicKey = data.stripePublicKey;
+
+                          const stripe = Stripe(stripePublicKey);
+                          console.log("stripe frontend", stripe);
+                          const { error } = await stripe.redirectToCheckout({
+                            sessionId,
+                          });
+                        }
+                      }}
+                    >
+                      {product.free ? "DOWNLOAD" : "PURCHASE"}
+                    </button>
+                  ) : (
+                    "Your product"
+                  )}
+                </>
+              )}
             </div>
           </div>
           <div className="mb-10">{product.description}</div>
