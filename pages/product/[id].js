@@ -2,12 +2,12 @@ import Head from "next/head";
 import Link from "next/link";
 
 import prisma from "lib/prisma";
-import { getProduct } from "lib/data";
-import { useSession } from "next-auth/react";
+import { getProduct, alreadyPurchased } from "lib/data";
+import { useSession, getSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Heading from "components/Heading";
 
-export default function Product({ product }) {
+export default function Product({ product, purchased }) {
   const { data: session, status } = useSession();
   const router = useRouter();
   const loading = status === "loading";
@@ -50,57 +50,65 @@ export default function Product({ product }) {
               {!session && <p>Login first</p>}
               {session && (
                 <>
-                  {session.user.id !== product.author.id ? (
-                    <button
-                      className="text-sm border p-2 font-bold uppercase"
-                      onClick={async () => {
-                        if (product.free) {
-                          await fetch("/api/download", {
-                            body: JSON.stringify({
-                              product_id: product.id,
-                            }),
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                            method: "POST",
-                          });
-
-                          router.push("/dashboard");
-                        } else {
-                          const res = await fetch("/api/stripe/session", {
-                            body: JSON.stringify({
-                              amount: product.price,
-                              title: product.title,
-                              product_id: product.id,
-                            }),
-                            headers: {
-                              "Content-Type": "application/json",
-                            },
-                            method: "POST",
-                          });
-
-                          const data = await res.json();
-                          if (data.status === "error") {
-                            alert(data.message);
-                            return;
-                          }
-                          console.log("data", data);
-
-                          const sessionId = data.sessionId;
-                          const stripePublicKey = data.stripePublicKey;
-
-                          const stripe = Stripe(stripePublicKey);
-                          console.log("stripe frontend", stripe);
-                          const { error } = await stripe.redirectToCheckout({
-                            sessionId,
-                          });
-                        }
-                      }}
-                    >
-                      {product.free ? "DOWNLOAD" : "PURCHASE"}
-                    </button>
+                  {purchased ? (
+                    "Already purchased"
                   ) : (
-                    "Your product"
+                    <>
+                      {session.user.id !== product.author.id ? (
+                        <button
+                          className="text-sm border p-2 font-bold uppercase"
+                          onClick={async () => {
+                            if (product.free) {
+                              await fetch("/api/download", {
+                                body: JSON.stringify({
+                                  product_id: product.id,
+                                }),
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                method: "POST",
+                              });
+
+                              router.push("/dashboard");
+                            } else {
+                              const res = await fetch("/api/stripe/session", {
+                                body: JSON.stringify({
+                                  amount: product.price,
+                                  title: product.title,
+                                  product_id: product.id,
+                                }),
+                                headers: {
+                                  "Content-Type": "application/json",
+                                },
+                                method: "POST",
+                              });
+
+                              const data = await res.json();
+                              if (data.status === "error") {
+                                alert(data.message);
+                                return;
+                              }
+                              console.log("data", data);
+
+                              const sessionId = data.sessionId;
+                              const stripePublicKey = data.stripePublicKey;
+
+                              const stripe = Stripe(stripePublicKey);
+                              console.log("stripe frontend", stripe);
+                              const { error } = await stripe.redirectToCheckout(
+                                {
+                                  sessionId,
+                                }
+                              );
+                            }
+                          }}
+                        >
+                          {product.free ? "DOWNLOAD" : "PURCHASE"}
+                        </button>
+                      ) : (
+                        "Your product"
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -120,12 +128,26 @@ export default function Product({ product }) {
 }
 
 export async function getServerSideProps(context) {
+  const session = await getSession(context);
+
   let product = await getProduct(context.params.id, prisma);
   product = JSON.parse(JSON.stringify(product));
+
+  let purchased = null;
+  if (session) {
+    purchased = await alreadyPurchased(
+      {
+        author: session.user.id,
+        product: context.params.id,
+      },
+      prisma
+    );
+  }
 
   return {
     props: {
       product,
+      purchased,
     },
   };
 }
