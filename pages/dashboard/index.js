@@ -10,7 +10,10 @@ export async function getServerSideProps(context) {
   const session = await getSession(context);
   if (!session) return { props: {} };
 
-  let products = await getProducts({ author: session.user.id }, prisma);
+  let products = await getProducts(
+    { author: session.user.id, includePurchases: true },
+    prisma
+  );
   products = JSON.parse(JSON.stringify(products));
 
   let purchases = await getPurchases({ author: session.user.id }, prisma);
@@ -82,16 +85,23 @@ export default function Dashboard({ products, purchases }) {
                   )}
                 </div>
                 <div className="">
-                  <Link href={`/dashboard/product/${product.id}`}>
-                    <a className="text-sm border p-2 font-bold uppercase">
-                      Edit
-                    </a>
-                  </Link>
-                  <Link href={`/product/${product.id}`}>
-                    <a className="text-sm border p-2 font-bold uppercase ml-2">
-                      View
-                    </a>
-                  </Link>
+                  <div className="">
+                    <Link href={`/dashboard/product/${product.id}`}>
+                      <a className="text-sm border p-2 font-bold uppercase">
+                        Edit
+                      </a>
+                    </Link>
+                    <Link href={`/product/${product.id}`}>
+                      <a className="text-sm border p-2 font-bold uppercase ml-2">
+                        View
+                      </a>
+                    </Link>
+                  </div>
+                  {product.purchases && product.purchases.length > 0 && (
+                    <p className="mt-3 text-right">
+                      {product.purchases.length} sales
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
